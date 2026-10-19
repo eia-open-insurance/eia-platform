@@ -1,0 +1,10 @@
+server:
+  port: 8101
+spring:
+  application:
+    name: eia-lineage
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

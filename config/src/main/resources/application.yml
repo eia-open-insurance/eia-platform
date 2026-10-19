@@ -1,0 +1,17 @@
+server:
+  port: 8888
+spring:
+  application:
+    name: eia-config
+  profiles:
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: file:./config
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
