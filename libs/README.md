@@ -13,6 +13,32 @@
 
 Shared Java libraries for error envelopes, observability, security context, and test fixtures.
 
+## Transactional outbox
+
+`com.eia.platform.libs.events` contains the canonical event envelope
+(`EventEnvelope`, SPEC 7.5.4 / 12.4), deterministic UUIDv5 event ids, and the
+canonical JSON mapper.
+
+`com.eia.platform.libs.outbox` contains the reusable outbox foundation:
+
+- `OutboxRepository` — Spring `JdbcTemplate` append, claim (`FOR UPDATE SKIP
+  LOCKED` with a visibility lease), mark sent, mark failed with the SPEC 7.5.1
+  backoff, and mark dead.
+- `OutboxDispatcher` / `RestClientOutboxDispatcher` — authenticated HTTP only;
+  no broker. Sets `X-EIA-Event-Id`, `X-EIA-Event-Type`,
+  `X-EIA-Event-Version`, `X-EIA-Aggregate-Version`, `Idempotency-Key`, and the
+  optional `X-EIA-Signature` HMAC.
+- `OutboxDispatchService` — claims one batch, preserves per-partition order,
+  and applies retry or dead-letter rules.
+- `OutboxDispatchJob` — Quartz job that runs one dispatch batch.
+- `OutboxProperties` — `eia.outbox.enabled`, `eia.outbox.endpoint`,
+  `eia.outbox.batch-size`, plus retry and timeout tuning.
+
+`OutboxAutoConfiguration` always provides the repository when JDBC is present;
+dispatcher and dispatch-service beans are created only when
+`eia.outbox.enabled=true`. Consumers own the Quartz schedule and the
+`outbox_event` DDL in `src/main/resources/db/outbox_event.sql`.
+
 ## Responsibilities
 
 - Keep this repository focused on one deployable component or one platform concern.
