@@ -15,7 +15,7 @@ Platform runtime monorepo: gateway, auth, config, lineage, and shared Java libra
 | Auth | `auth/` | Spring Authorization Server | Yes |
 | Config | `config/` | Spring Cloud Config Server | Yes |
 | Lineage | `lineage/` | Spring Boot service | Yes |
-| Shared Java libraries | `libs/` | Maven library | No |
+| Shared Java libraries | `libs/` | Java library | No |
 
 ## Verification
 
@@ -30,3 +30,4 @@ No hosted CI is used. Component builds and tests run locally.
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+

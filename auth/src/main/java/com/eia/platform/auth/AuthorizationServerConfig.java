@@ -12,7 +12,7 @@ import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
-import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
+import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
@@ -25,9 +25,13 @@ public class AuthorizationServerConfig {
     @Bean
     @Order(1)
     SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
-        OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
-        http.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(
-                new org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint("/login")));
+        OAuth2AuthorizationServerConfigurer authorizationServer = new OAuth2AuthorizationServerConfigurer();
+        authorizationServer.oidc(Customizer.withDefaults());
+        http.securityMatcher(authorizationServer.getEndpointsMatcher())
+                .with(authorizationServer, Customizer.withDefaults())
+                .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
+                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(
+                        new org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint("/login")));
         return http.build();
     }
 
@@ -70,3 +74,5 @@ public class AuthorizationServerConfig {
         return AuthorizationServerSettings.builder().issuer("http://localhost:9000").build();
     }
 }
+
+
