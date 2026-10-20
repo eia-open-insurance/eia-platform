@@ -160,6 +160,18 @@ class InboxServiceTest {
         assertThat(service.stats(5).totalEvents()).isZero();
     }
 
+    @Test
+    void aggregateActivityIsScopedToTheTenantAndLimit() {
+        InboxService service = service("");
+        UUID tenantId = UUID.randomUUID();
+        UUID aggregateId = UUID.randomUUID();
+        when(repository.findByAggregate(tenantId, aggregateId, 50)).thenReturn(java.util.List.of());
+
+        assertThat(service.aggregateActivity(tenantId, aggregateId, 50)).isEmpty();
+
+        verify(repository).findByAggregate(tenantId, aggregateId, 50);
+    }
+
     private InboxService service(String secret) {
         EventIngestProperties properties = new EventIngestProperties();
         properties.setSigningSecret(secret);

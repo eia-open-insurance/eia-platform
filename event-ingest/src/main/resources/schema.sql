@@ -34,3 +34,7 @@ CREATE INDEX IF NOT EXISTS ix_inbox_event_event_type
 
 CREATE INDEX IF NOT EXISTS ix_inbox_event_tenant
     ON inbox_event (tenant_id, received_at DESC);
+
+-- Aggregate activity: tenant-scoped reads for one aggregate, newest first.
+CREATE INDEX IF NOT EXISTS ix_inbox_event_tenant_aggregate_occurred
+    ON inbox_event (tenant_id, aggregate_id, occurred_at DESC);

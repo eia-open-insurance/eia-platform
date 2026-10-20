@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Inbox consumer entry point.
@@ -74,6 +75,15 @@ public class InboxService {
 
     public List<InboxEvent> recent(int limit) {
         return repository.recent(limit);
+    }
+
+    /**
+     * Newest-first activity for one aggregate. The tenant always comes from the
+     * caller's transport context and is applied as a repository predicate, so a
+     * caller can never read another tenant's events.
+     */
+    public List<AggregateEvent> aggregateActivity(UUID tenantId, UUID aggregateId, int limit) {
+        return repository.findByAggregate(tenantId, aggregateId, limit);
     }
 
     public InboxStats stats(int eventTypeLimit) {

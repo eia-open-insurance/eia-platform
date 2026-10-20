@@ -1,5 +1,8 @@
 package com.eia.platform.eventingest.inbox;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -34,9 +37,13 @@ public class InboxRepository {
     private static final RowMapper<InboxEvent> MAPPER = InboxRepository::map;
 
     private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
+    private final RowMapper<AggregateEvent> aggregateMapper;
 
-    public InboxRepository(JdbcTemplate jdbc) {
+    public InboxRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
+        this.mapper = mapper;
+        this.aggregateMapper = this::mapAggregate;
     }
 
     /**
@@ -100,6 +107,23 @@ public class InboxRepository {
                 """.formatted(COLUMNS), MAPPER, limit);
     }
 
+    /**
+     * Newest-first events for one aggregate, always constrained to the
+     * caller's tenant. The {@code (tenant_id, aggregate_id, occurred_at DESC)}
+     * index backs this read (schema.sql).
+     */
+    public List<AggregateEvent> findByAggregate(UUID tenantId, UUID aggregateId, int limit) {
+        return jdbc.query("""
+                SELECT event_id, event_type, event_version, tenant_id, business_book,
+                       aggregate_type, aggregate_id, aggregate_version, occurred_at,
+                       received_at, status, payload
+                  FROM inbox_event
+                 WHERE tenant_id = ? AND aggregate_id = ?
+                 ORDER BY occurred_at DESC, event_id DESC
+                 LIMIT ?
+                """, aggregateMapper, tenantId, aggregateId, limit);
+    }
+
     public InboxStats stats(int eventTypeLimit) {
         Map<String, Object> totals = jdbc.queryForMap("""
                 SELECT count(*) AS total_events,
@@ -160,6 +184,34 @@ public class InboxRepository {
                 instant(rs, "processed_at"),
                 rs.getString("status"),
                 rs.getString("payload_hash"));
+    }
+
+    private AggregateEvent mapAggregate(ResultSet rs, int rowNum) throws SQLException {
+        return new AggregateEvent(
+                rs.getObject("event_id", UUID.class),
+                rs.getString("event_type"),
+                rs.getInt("event_version"),
+                rs.getObject("tenant_id", UUID.class),
+                rs.getString("business_book"),
+                rs.getString("aggregate_type"),
+                rs.getObject("aggregate_id", UUID.class),
+                rs.getLong("aggregate_version"),
+                instant(rs, "occurred_at"),
+                instant(rs, "received_at"),
+                rs.getString("status"),
+                json(rs, "payload"));
+    }
+
+    private JsonNode json(ResultSet rs, String column) throws SQLException {
+        String value = rs.getString(column);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return mapper.readTree(value);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Stored " + column + " is not valid JSON", ex);
+        }
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {

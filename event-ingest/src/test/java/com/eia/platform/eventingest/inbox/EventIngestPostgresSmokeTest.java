@@ -154,6 +154,84 @@ class EventIngestPostgresSmokeTest {
         }
     }
 
+    @Test
+    void servesTenantScopedAggregateActivityNewestFirst() throws Exception {
+        UUID aggregateId = UUID.randomUUID();
+        UUID tenantA = UUID.randomUUID();
+        UUID tenantB = UUID.randomUUID();
+        UUID olderA = UUID.randomUUID();
+        UUID newerA = UUID.randomUUID();
+        UUID eventB = UUID.randomUUID();
+        Instant base = Instant.now().minusSeconds(600);
+        List<UUID> created = new ArrayList<>();
+
+        try {
+            postAggregateEnvelope(envelope(olderA, "party.party.aggregate-tested",
+                    tenantA.toString(), aggregateId, base), created);
+            postAggregateEnvelope(envelope(newerA, "party.party.aggregate-tested",
+                    tenantA.toString(), aggregateId, base.plusSeconds(20)), created);
+            postAggregateEnvelope(envelope(eventB, "party.party.aggregate-tested",
+                    tenantB.toString(), aggregateId, base.plusSeconds(30)), created);
+
+            HttpResponse<String> tenantAResponse = get(
+                    "/api/v1/events/aggregate/" + aggregateId + "?limit=50",
+                    Map.of("X-EIA-Tenant", tenantA.toString()));
+            assertThat(tenantAResponse.statusCode()).isEqualTo(200);
+            JsonNode body = mapper.readTree(tenantAResponse.body());
+            assertThat(body.path("aggregateId").asText()).isEqualTo(aggregateId.toString());
+            assertThat(body.path("limit").asInt()).isEqualTo(50);
+            assertThat(body.path("items").size()).isEqualTo(2);
+            assertThat(body.path("items").get(0).path("eventId").asText())
+                    .isEqualTo(newerA.toString());
+            assertThat(body.path("items").get(0).path("tenantId").asText())
+                    .isEqualTo(tenantA.toString());
+            assertThat(body.path("items").get(0).path("status").asText()).isEqualTo("PROCESSED");
+            assertThat(body.path("items").get(0).path("payload").isObject()).isTrue();
+            assertThat(body.path("items").get(0).path("payload").path("eventId").asText())
+                    .isEqualTo(newerA.toString());
+            assertThat(body.path("items").get(1).path("eventId").asText())
+                    .isEqualTo(olderA.toString());
+            assertThat(body.path("items").toString()).doesNotContain(eventB.toString());
+
+            HttpResponse<String> limited = get(
+                    "/api/v1/events/aggregate/" + aggregateId + "?limit=1",
+                    Map.of("X-EIA-Tenant", tenantA.toString()));
+            assertThat(limited.statusCode()).isEqualTo(200);
+            JsonNode limitedBody = mapper.readTree(limited.body());
+            assertThat(limitedBody.path("limit").asInt()).isEqualTo(1);
+            assertThat(limitedBody.path("items").size()).isEqualTo(1);
+            assertThat(limitedBody.path("items").get(0).path("eventId").asText())
+                    .isEqualTo(newerA.toString());
+
+            HttpResponse<String> tenantBResponse = get(
+                    "/api/v1/events/aggregate/" + aggregateId,
+                    Map.of("X-EIA-Tenant", tenantB.toString()));
+            assertThat(tenantBResponse.statusCode()).isEqualTo(200);
+            JsonNode tenantBBody = mapper.readTree(tenantBResponse.body());
+            assertThat(tenantBBody.path("items").size()).isEqualTo(1);
+            assertThat(tenantBBody.path("items").get(0).path("eventId").asText())
+                    .isEqualTo(eventB.toString());
+
+            HttpResponse<String> empty = get(
+                    "/api/v1/events/aggregate/" + UUID.randomUUID(),
+                    Map.of("X-EIA-Tenant", tenantA.toString()));
+            assertThat(empty.statusCode()).isEqualTo(200);
+            JsonNode emptyBody = mapper.readTree(empty.body());
+            assertThat(emptyBody.path("items").isArray()).isTrue();
+            assertThat(emptyBody.path("items").size()).isZero();
+
+            assertThat(get("/api/v1/events/aggregate/" + aggregateId).statusCode()).isEqualTo(400);
+            assertThat(get("/api/v1/events/aggregate/not-a-uuid",
+                    Map.of("X-EIA-Tenant", tenantA.toString())).statusCode()).isEqualTo(400);
+            assertThat(get("/api/v1/events/aggregate/" + aggregateId + "?limit=101",
+                    Map.of("X-EIA-Tenant", tenantA.toString())).statusCode()).isEqualTo(400);
+        } finally {
+            for (UUID id : created) {
+                jdbc.update("DELETE FROM inbox_event WHERE event_id = ?", id);
+            }
+        }
+    }
+
     private HttpResponse<String> post(String body, ObjectNode envelope, String signature)
             throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl() + "/internal/events"))
@@ -167,9 +245,21 @@ class EventIngestPostgresSmokeTest {
         return client.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 
+    private void postAggregateEnvelope(ObjectNode envelope, List<UUID> created) throws Exception {
+        String body = mapper.writeValueAsString(envelope);
+        HttpResponse<String> response = post(body, envelope, sign(body));
+        assertThat(response.statusCode()).isEqualTo(202);
+        created.add(UUID.fromString(envelope.get("eventId").asText()));
+    }
+
     private HttpResponse<String> get(String path) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + path)).GET().build();
-        return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return get(path, Map.of());
+    }
+
+    private HttpResponse<String> get(String path, Map<String, String> headers) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl() + path)).GET();
+        headers.forEach(request::header);
+        return client.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 
     private String baseUrl() {
@@ -190,17 +280,23 @@ class EventIngestPostgresSmokeTest {
     }
 
     private ObjectNode envelope(UUID eventId, String eventType) {
+        return envelope(eventId, eventType, "11111111-1111-7111-8111-111111111111",
+                UUID.randomUUID(), Instant.now());
+    }
+
+    private ObjectNode envelope(UUID eventId, String eventType, String tenantId,
+                                UUID aggregateId, Instant occurredAt) {
         ObjectNode envelope = mapper.createObjectNode();
         envelope.put("eventId", eventId.toString());
         envelope.put("eventType", eventType);
         envelope.put("eventVersion", 1);
-        envelope.put("occurredAt", Instant.now().toString());
+        envelope.put("occurredAt", occurredAt.toString());
         envelope.put("recordedAt", Instant.now().toString());
-        envelope.put("tenantId", "11111111-1111-7111-8111-111111111111");
+        envelope.put("tenantId", tenantId);
         envelope.put("book", "DIRECT");
         envelope.put("vertical", "party");
         envelope.put("aggregateType", "Party");
-        envelope.put("aggregateId", UUID.randomUUID().toString());
+        envelope.put("aggregateId", aggregateId.toString());
         envelope.put("aggregateVersion", 1);
         envelope.set("data", mapper.createObjectNode()
                 .put("partyNumber", "PTY-SMOKE-" + eventId.toString().substring(0, 8))

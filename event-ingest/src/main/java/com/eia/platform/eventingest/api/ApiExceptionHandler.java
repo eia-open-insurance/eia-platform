@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -97,11 +98,31 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Problem> invalidParameter(
             MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
-        return problem(HttpStatus.BAD_REQUEST, "Invalid query parameter",
-                "query parameter " + ex.getName() + " has an invalid value",
+        return problem(HttpStatus.BAD_REQUEST, "Invalid request parameter",
+                "request parameter " + ex.getName() + " has an invalid value",
                 ERROR_BASE + "invalid-parameter", "EIA-PLT-4003", "VALIDATION",
                 request, List.of(new FieldIssue(ex.getName(), "INVALID",
                         ex.getName() + " has an invalid value")), null);
+    }
+
+    @ExceptionHandler(InvalidLimitException.class)
+    public ResponseEntity<Problem> invalidLimit(
+            InvalidLimitException ex, HttpServletRequest request) {
+        String detail = "limit must be between 1 and " + ex.maxLimit();
+        return problem(HttpStatus.BAD_REQUEST, "Invalid query parameter", detail,
+                ERROR_BASE + "invalid-parameter", "EIA-PLT-4003", "VALIDATION",
+                request, List.of(new FieldIssue("limit", "OUT_OF_RANGE", detail)),
+                Map.of("limit", ex.limit(), "maxLimit", ex.maxLimit()));
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<Problem> missingHeader(
+            MissingRequestHeaderException ex, HttpServletRequest request) {
+        String header = ex.getHeaderName();
+        return problem(HttpStatus.BAD_REQUEST, "Missing required header",
+                "required header " + header + " is missing",
+                ERROR_BASE + "missing-header", "EIA-PLT-4004", "VALIDATION",
+                request, List.of(new FieldIssue(header, "REQUIRED", header + " is required")), null);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
