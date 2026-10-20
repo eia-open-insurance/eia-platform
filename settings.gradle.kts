@@ -1,2 +1,2 @@
 rootProject.name = "eia-platform"
-include("libs", "gateway", "auth", "config", "lineage")
+include("libs", "gateway", "auth", "config", "lineage", "event-ingest")

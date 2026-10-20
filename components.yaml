@@ -19,6 +19,11 @@ components:
     type: service
     deployable: true
     port: 8101
+  - name: event-ingest
+    path: event-ingest
+    type: service
+    deployable: true
+    port: 8102
   - name: libs
     path: libs
     type: library

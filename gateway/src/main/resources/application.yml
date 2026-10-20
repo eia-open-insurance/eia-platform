@@ -46,6 +46,9 @@ spring:
         - id: lineage
           uri: http://localhost:8101
           predicates: [Path=/api/v1/lineage/**]
+        - id: event-ingest
+          uri: http://localhost:8102
+          predicates: [Path=/api/v1/events/**]
 management:
   endpoints:
     web:

@@ -1,6 +1,6 @@
 # eia-platform
 
-Platform runtime monorepo: gateway, auth, config, lineage, and shared Java libraries.
+Platform runtime monorepo: gateway, auth, config, lineage, event ingest, and shared Java libraries.
 
 - GitHub organization: `eia-open-insurance`
 - Repository URL: https://github.com/eia-open-insurance/eia-platform
@@ -15,6 +15,7 @@ Platform runtime monorepo: gateway, auth, config, lineage, and shared Java libra
 | Auth | `auth/` | Spring Authorization Server | Yes |
 | Config | `config/` | Spring Cloud Config Server | Yes |
 | Lineage | `lineage/` | Spring Boot service | Yes |
+| Event ingest | `event-ingest/` | Spring Boot inbox service | Yes |
 | Shared Java libraries | `libs/` | Java library | No |
 
 ## Verification
