@@ -13,6 +13,10 @@
 
 Edge routing, session, rate limiting, CSRF, request correlation, and API aggregation.
 
+## Public endpoints
+
+- `GET /api/v1/directory` — read-only people and team directory used by the shell for assignee and queue labels. It is public (no `X-EIA-Tenant` header required), served locally by the gateway, and deliberately outside the proxied `/api/v1/*` route families. Responses keep a stable people and team order.
+
 ## Responsibilities
 
 - Keep this repository focused on one deployable component or one platform concern.
