@@ -17,6 +17,16 @@ Edge routing, session, rate limiting, CSRF, request correlation, and API aggrega
 
 - `GET /api/v1/directory` — read-only people and team directory used by the shell for assignee and queue labels. It is public (no `X-EIA-Tenant` header required), served locally by the gateway, and deliberately outside the proxied `/api/v1/*` route families. Responses keep a stable people and team order.
 
+## Edge authentication (opt-in)
+
+JWT validation is disabled by default, so every exchange is permitted and the gateway keeps its public behaviour. Set `eia.auth.enabled=true` to keep `/actuator/health` and `/api/v1/directory` public and require a valid bearer JWT on every other exchange. The resource server verifies signatures against the configured JWK set, requires the configured issuer, and maps the `scope` claim to `SCOPE_`-prefixed authorities. CSRF is disabled because the gateway is a stateless proxy.
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `eia.auth.enabled` | `false` | Turn on edge JWT validation |
+| `eia.auth.jwks-uri` | `http://localhost:9000/oauth2/jwks` | JWK set used for signature verification |
+| `eia.auth.issuer` | `http://localhost:9000` | Required `iss` claim |
+
 ## Responsibilities
 
 - Keep this repository focused on one deployable component or one platform concern.

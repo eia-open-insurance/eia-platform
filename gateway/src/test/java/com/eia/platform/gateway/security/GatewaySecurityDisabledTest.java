@@ -1,0 +1,72 @@
+package com.eia.platform.gateway.security;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.WebFilterChainProxy;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.web.reactive.function.server.ServerResponse;
+import org.springframework.web.server.WebHandler;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Verifies the default, opt-out behaviour: the gateway stays public unless an
+ * environment explicitly enables edge authentication.
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureWebTestClient
+class GatewaySecurityDisabledTest {
+
+    @Autowired
+    private WebTestClient client;
+
+    @Autowired
+    private SecurityWebFilterChain securityWebFilterChain;
+
+    @Autowired
+    private AuthProperties authProperties;
+
+    @Test
+    void exposesSecurityFilterChainBean() {
+        assertThat(securityWebFilterChain).isNotNull();
+    }
+
+    @Test
+    void authenticationIsDisabledWithDocumentedDefaults() {
+        assertThat(authProperties.enabled()).isFalse();
+        assertThat(authProperties.jwksUri()).isEqualTo("http://localhost:9000/oauth2/jwks");
+        assertThat(authProperties.issuer()).isEqualTo("http://localhost:9000");
+    }
+
+    @Test
+    void permitsDirectoryWithoutToken() {
+        client.get().uri("/api/v1/directory").exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void permitsHealthWithoutToken() {
+        client.get().uri("/actuator/health").exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void permitsNonPublicExchangeWithoutTokenWhenDisabled() {
+        // The mock handler stands in for a route target so the assertion proves
+        // authorization, not the availability of a downstream service.
+        WebTestClient filteredClient = WebTestClient
+                .bindToWebHandler(okHandler())
+                .webFilter(new WebFilterChainProxy(securityWebFilterChain))
+                .build();
+
+        filteredClient.get().uri("/api/v1/parties").exchange()
+                .expectStatus().isOk();
+    }
+
+    private WebHandler okHandler() {
+        return exchange -> ServerResponse.ok().build().then();
+    }
+}

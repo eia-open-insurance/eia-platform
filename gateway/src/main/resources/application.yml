@@ -1,5 +1,14 @@
 server:
   port: 8080
+eia:
+  auth:
+    # Opt-in edge authentication. Disabled by default: every exchange is
+    # permitted, preserving the gateway's public behaviour. When enabled, only
+    # /actuator/health and /api/v1/directory stay public and all other
+    # exchanges require a valid bearer JWT.
+    enabled: false
+    jwks-uri: http://localhost:9000/oauth2/jwks
+    issuer: http://localhost:9000
 spring:
   application:
     name: eia-gateway
