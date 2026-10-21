@@ -13,6 +13,32 @@
 
 OIDC/OAuth2 authorization server, client registry, token issuance, and step-up authentication.
 
+## Local login
+
+The authorization server is self-contained for local development:
+
+| Setting | Value |
+| --- | --- |
+| Issuer | `http://localhost:9000` (override with `eia.auth.issuer` or `EIA_AUTH_ISSUER`) |
+| Token endpoint | `POST http://localhost:9000/oauth2/token` |
+| JWKS | `GET http://localhost:9000/oauth2/jwks` |
+| Client | `eia-shell` / `shell-secret` (`client_secret_basic`) |
+| User | `adjuster` / `password` (role `CLAIMS_ADJUSTER`) |
+
+Request a token with the resource owner password grant:
+
+```bash
+curl -s -u eia-shell:shell-secret \
+  -d 'grant_type=password&username=adjuster&password=password&scope=openid profile eia.read' \
+  http://localhost:9000/oauth2/token
+```
+
+The `eia-shell` client also supports `authorization_code` and `refresh_token`
+with redirect URI `http://localhost:3000/callback`.
+
+Run the service with `./gradlew :auth:bootRun` and the tests with
+`./gradlew :auth:test`.
+
 ## Responsibilities
 
 - Keep this repository focused on one deployable component or one platform concern.
