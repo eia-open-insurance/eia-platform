@@ -21,6 +21,21 @@ Edge routing, session, rate limiting, CSRF, request correlation, and API aggrega
 
 JWT validation is disabled by default, so every exchange is permitted and the gateway keeps its public behaviour. Set `eia.auth.enabled=true` to keep `/actuator/health` and `/api/v1/directory` public and require a valid bearer JWT on every other exchange. The resource server verifies signatures against the configured JWK set, requires the configured issuer, and maps the `scope` claim to `SCOPE_`-prefixed authorities. CSRF is disabled because the gateway is a stateless proxy.
 
+### Method-level scopes
+
+When edge authentication is enabled, authenticated `/api/**` exchanges are also authorized by HTTP method:
+
+| Methods | Required authority |
+| --- | --- |
+| `GET`, `HEAD`, `OPTIONS` | `SCOPE_eia.read` |
+| `POST`, `PUT`, `PATCH`, `DELETE` | `SCOPE_eia.write` |
+
+A valid token that lacks the required scope is rejected with `403 Forbidden`; a missing or invalid token stays `401 Unauthorized`. Health and the directory remain public.
+
+### Actor propagation
+
+When a request is authenticated with a bearer JWT, the gateway sets `X-EIA-Actor` to the token `sub` before proxying the exchange. An `X-EIA-Actor` header supplied by the caller is never overwritten. The propagation filter is only installed when edge authentication is enabled.
+
 | Property | Default | Purpose |
 | --- | --- | --- |
 | `eia.auth.enabled` | `false` | Turn on edge JWT validation |

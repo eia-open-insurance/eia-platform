@@ -5,7 +5,9 @@ eia:
     # Opt-in edge authentication. Disabled by default: every exchange is
     # permitted, preserving the gateway's public behaviour. When enabled, only
     # /actuator/health and /api/v1/directory stay public and all other
-    # exchanges require a valid bearer JWT.
+    # exchanges require a valid bearer JWT. Authenticated /api/** exchanges
+    # need SCOPE_eia.read for GET/HEAD/OPTIONS and SCOPE_eia.write for
+    # POST/PUT/PATCH/DELETE; the JWT subject is forwarded as X-EIA-Actor.
     enabled: false
     jwks-uri: http://localhost:9000/oauth2/jwks
     issuer: http://localhost:9000

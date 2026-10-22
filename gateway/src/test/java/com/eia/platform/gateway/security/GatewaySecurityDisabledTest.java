@@ -4,11 +4,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.WebFilterChainProxy;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.server.ServerResponse;
 import org.springframework.web.server.WebHandler;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -64,6 +67,27 @@ class GatewaySecurityDisabledTest {
 
         filteredClient.get().uri("/api/v1/parties").exchange()
                 .expectStatus().isOk();
+    }
+
+    @Test
+    void doesNotPropagateActorHeaderWhenDisabled() {
+        // No JWT decoding and no actor filter are installed in the disabled
+        // configuration, so an Authorization header has no effect at all.
+        AtomicReference<String> actor = new AtomicReference<>();
+        WebTestClient filteredClient = WebTestClient
+                .bindToWebHandler(exchange -> {
+                    actor.set(exchange.getRequest().getHeaders().getFirst(ActorHeaderWebFilter.ACTOR_HEADER));
+                    return ServerResponse.ok().build().then();
+                })
+                .webFilter(new WebFilterChainProxy(securityWebFilterChain))
+                .build();
+
+        filteredClient.get().uri("/api/v1/parties")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ignored-when-authentication-is-disabled")
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(actor.get()).isNull();
     }
 
     private WebHandler okHandler() {

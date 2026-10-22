@@ -5,7 +5,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -25,6 +27,10 @@ import reactor.core.publisher.Mono;
  * behaviour. When enabled, only health and the public directory stay open and
  * every other exchange must carry a valid bearer JWT issued by
  * {@code eia.auth.issuer} and signed by a key from {@code eia.auth.jwks-uri}.
+ * Once authenticated, API exchanges are authorized by HTTP method: safe
+ * methods need {@code SCOPE_eia.read} and mutations need
+ * {@code SCOPE_eia.write}. Authenticated JWT requests then get an
+ * {@code X-EIA-Actor} header derived from the token subject.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
@@ -32,6 +38,12 @@ public class GatewaySecurityConfig {
 
     /** Paths that stay public even when edge authentication is enabled. */
     static final String[] PUBLIC_PATHS = { "/actuator/health", "/api/v1/directory" };
+
+    /** Proxied API surface governed by method-level scopes. */
+    static final String API_PATHS = "/api/**";
+
+    static final String READ_SCOPE_AUTHORITY = "SCOPE_eia.read";
+    static final String WRITE_SCOPE_AUTHORITY = "SCOPE_eia.write";
 
     @Bean
     @ConditionalOnProperty(prefix = "eia.auth", name = "enabled", havingValue = "false", matchIfMissing = true)
@@ -49,11 +61,20 @@ public class GatewaySecurityConfig {
         http.csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(PUBLIC_PATHS).permitAll()
+                        .pathMatchers(HttpMethod.GET, API_PATHS).hasAuthority(READ_SCOPE_AUTHORITY)
+                        .pathMatchers(HttpMethod.HEAD, API_PATHS).hasAuthority(READ_SCOPE_AUTHORITY)
+                        .pathMatchers(HttpMethod.OPTIONS, API_PATHS).hasAuthority(READ_SCOPE_AUTHORITY)
+                        .pathMatchers(HttpMethod.POST, API_PATHS).hasAuthority(WRITE_SCOPE_AUTHORITY)
+                        .pathMatchers(HttpMethod.PUT, API_PATHS).hasAuthority(WRITE_SCOPE_AUTHORITY)
+                        .pathMatchers(HttpMethod.PATCH, API_PATHS).hasAuthority(WRITE_SCOPE_AUTHORITY)
+                        .pathMatchers(HttpMethod.DELETE, API_PATHS).hasAuthority(WRITE_SCOPE_AUTHORITY)
+                        .pathMatchers(API_PATHS).authenticated()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt
                                 .jwtDecoder(jwtDecoder)
-                                .jwtAuthenticationConverter(jwtAuthenticationConverter)));
+                                .jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                .addFilterAfter(new ActorHeaderWebFilter(), SecurityWebFiltersOrder.AUTHENTICATION);
         return http.build();
     }
 
