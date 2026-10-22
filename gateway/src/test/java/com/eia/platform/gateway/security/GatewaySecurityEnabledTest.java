@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
@@ -49,8 +50,10 @@ import static org.mockito.Mockito.lenient;
  * Verifies the opt-in behaviour: when {@code eia.auth.enabled=true}, health and
  * the directory stay public while every other exchange needs a valid bearer
  * JWT. API exchanges additionally require {@code SCOPE_eia.read} for safe
- * methods and {@code SCOPE_eia.write} for mutations, and an authenticated JWT
- * request carries its subject downstream as {@code X-EIA-Actor}.
+ * methods and {@code SCOPE_eia.write} for mutations. An authenticated JWT
+ * request is bound to the token tenant claim: the {@code X-EIA-Tenant} header
+ * is injected or must match, and the subject is carried downstream as
+ * {@code X-EIA-Actor}.
  *
  * <p>The production JWKS decoder is replaced by a mock that delegates to a real
  * Nimbus decoder keyed from a generated RSA pair, so signature and issuer
@@ -67,6 +70,9 @@ class GatewaySecurityEnabledTest {
     private static final String READ_SCOPE = "eia.read";
     private static final String WRITE_SCOPE = "eia.write";
     private static final String SCOPE = READ_SCOPE + " " + WRITE_SCOPE;
+    private static final String TENANT_CLAIM = "tenant_id";
+    private static final String TENANT = "11111111-1111-1111-1111-111111111111";
+    private static final String OTHER_TENANT = "22222222-2222-2222-2222-222222222222";
 
     private static final KeyPair KEY_PAIR = generateKeyPair();
     private static final RSAKey SIGNING_KEY = rsaKey(KEY_PAIR);
@@ -102,6 +108,7 @@ class GatewaySecurityEnabledTest {
         assertThat(authProperties.enabled()).isTrue();
         assertThat(authProperties.jwksUri()).isEqualTo("http://localhost:9000/oauth2/jwks");
         assertThat(authProperties.issuer()).isEqualTo(ISSUER);
+        assertThat(authProperties.tenantClaim()).isEqualTo(TENANT_CLAIM);
     }
 
     @Test
@@ -243,6 +250,70 @@ class GatewaySecurityEnabledTest {
         assertThat(actor).hasValue("upstream-actor");
     }
 
+    @Test
+    void allowsRequestWhoseTenantHeaderMatchesTheToken() {
+        filteredClient(okHandler()).get().uri("/api/v1/parties")
+                .header(HttpHeaders.AUTHORIZATION, bearer(readToken()))
+                .header(TenantHeaderWebFilter.TENANT_HEADER, TENANT)
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void forbidsRequestWhoseTenantHeaderDiffersFromTheToken() {
+        filteredClient(okHandler()).get().uri("/api/v1/parties")
+                .header(HttpHeaders.AUTHORIZATION, bearer(readToken()))
+                .header(TenantHeaderWebFilter.TENANT_HEADER, OTHER_TENANT)
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo(TenantHeaderWebFilter.TENANT_FORBIDDEN)
+                .jsonPath("$.detail").isNotEmpty();
+    }
+
+    @Test
+    void injectsTenantHeaderFromTokenWhenCallerSuppliedNone() {
+        AtomicReference<String> tenant = new AtomicReference<>();
+
+        filteredClient(captureTenant(tenant)).get().uri("/api/v1/parties")
+                .header(HttpHeaders.AUTHORIZATION, bearer(readToken()))
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(tenant).hasValue(TENANT);
+    }
+
+    @Test
+    void forbidsTokenWithoutTenantClaim() {
+        filteredClient(okHandler()).get().uri("/api/v1/parties")
+                .header(HttpHeaders.AUTHORIZATION, bearer(tokenWithoutTenantClaim()))
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo(TenantHeaderWebFilter.TENANT_FORBIDDEN)
+                .jsonPath("$.detail").isNotEmpty();
+    }
+
+    @Test
+    void forbidsTokenWithBlankTenantClaim() {
+        filteredClient(okHandler()).get().uri("/api/v1/parties")
+                .header(HttpHeaders.AUTHORIZATION, bearer(tokenWithBlankTenantClaim()))
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectBody()
+                .jsonPath("$.code").isEqualTo(TenantHeaderWebFilter.TENANT_FORBIDDEN);
+    }
+
+    @Test
+    void keepsPublicPathsOpenForTokenWithoutTenantClaim() {
+        client.get().uri("/api/v1/directory")
+                .header(HttpHeaders.AUTHORIZATION, bearer(tokenWithoutTenantClaim()))
+                .exchange()
+                .expectStatus().isOk();
+    }
+
     private WebTestClient filteredClient(WebHandler handler) {
         return WebTestClient.bindToWebHandler(handler)
                 .webFilter(new WebFilterChainProxy(securityWebFilterChain))
@@ -260,6 +331,13 @@ class GatewaySecurityEnabledTest {
         };
     }
 
+    private static WebHandler captureTenant(AtomicReference<String> tenant) {
+        return exchange -> {
+            tenant.set(exchange.getRequest().getHeaders().getFirst(TenantHeaderWebFilter.TENANT_HEADER));
+            return ServerResponse.ok().build().then();
+        };
+    }
+
     private static String readToken() {
         return token(ENCODER, SIGNING_KEY, ISSUER, SUBJECT, READ_SCOPE);
     }
@@ -272,15 +350,28 @@ class GatewaySecurityEnabledTest {
         return token(ENCODER, SIGNING_KEY, ISSUER, SUBJECT, null);
     }
 
+    private static String tokenWithoutTenantClaim() {
+        return token(ENCODER, SIGNING_KEY, ISSUER, SUBJECT, READ_SCOPE, null);
+    }
+
+    private static String tokenWithBlankTenantClaim() {
+        return token(ENCODER, SIGNING_KEY, ISSUER, SUBJECT, READ_SCOPE, "   ");
+    }
+
     private static String bearer(String token) {
         return "Bearer " + token;
     }
 
     private static String token(JwtEncoder encoder, RSAKey signingKey, String issuer) {
-        return token(encoder, signingKey, issuer, SUBJECT, SCOPE);
+        return token(encoder, signingKey, issuer, SUBJECT, SCOPE, TENANT);
     }
 
     private static String token(JwtEncoder encoder, RSAKey signingKey, String issuer, String subject, String scope) {
+        return token(encoder, signingKey, issuer, subject, scope, TENANT);
+    }
+
+    private static String token(JwtEncoder encoder, RSAKey signingKey, String issuer,
+            String subject, String scope, String tenant) {
         Instant now = Instant.now();
         JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
                 .issuer(issuer)
@@ -289,6 +380,9 @@ class GatewaySecurityEnabledTest {
                 .expiresAt(now.plusSeconds(300));
         if (scope != null) {
             claims.claim("scope", scope);
+        }
+        if (tenant != null) {
+            claims.claim(TENANT_CLAIM, tenant);
         }
         JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256)
                 .keyId(signingKey.getKeyID())

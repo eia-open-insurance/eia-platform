@@ -24,6 +24,7 @@ class AuthPropertiesTest {
             assertThat(properties.enabled()).isFalse();
             assertThat(properties.jwksUri()).isEqualTo("http://localhost:9000/oauth2/jwks");
             assertThat(properties.issuer()).isEqualTo("http://localhost:9000");
+            assertThat(properties.tenantClaim()).isEqualTo("tenant_id");
         });
     }
 
@@ -32,13 +33,15 @@ class AuthPropertiesTest {
         runner.withPropertyValues(
                         "eia.auth.enabled=true",
                         "eia.auth.jwks-uri=https://auth.example/oauth2/jwks",
-                        "eia.auth.issuer=https://auth.example")
+                        "eia.auth.issuer=https://auth.example",
+                        "eia.auth.tenant-claim=agency_id")
                 .run(context -> {
                     AuthProperties properties = context.getBean(AuthProperties.class);
 
                     assertThat(properties.enabled()).isTrue();
                     assertThat(properties.jwksUri()).isEqualTo("https://auth.example/oauth2/jwks");
                     assertThat(properties.issuer()).isEqualTo("https://auth.example");
+                    assertThat(properties.tenantClaim()).isEqualTo("agency_id");
                 });
     }
 

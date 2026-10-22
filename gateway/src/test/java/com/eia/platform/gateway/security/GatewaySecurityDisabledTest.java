@@ -70,6 +70,39 @@ class GatewaySecurityDisabledTest {
     }
 
     @Test
+    void permitsConflictingTenantHeaderWhenDisabled() {
+        WebTestClient filteredClient = WebTestClient
+                .bindToWebHandler(okHandler())
+                .webFilter(new WebFilterChainProxy(securityWebFilterChain))
+                .build();
+
+        filteredClient.get().uri("/api/v1/parties")
+                .header(TenantHeaderWebFilter.TENANT_HEADER, "caller-tenant")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ignored-when-authentication-is-disabled")
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void doesNotInjectTenantHeaderWhenDisabled() {
+        // The tenant binding filter is only installed when authentication is
+        // enabled, so the caller's missing header stays missing.
+        AtomicReference<String> tenant = new AtomicReference<>();
+        WebTestClient filteredClient = WebTestClient
+                .bindToWebHandler(exchange -> {
+                    tenant.set(exchange.getRequest().getHeaders().getFirst(TenantHeaderWebFilter.TENANT_HEADER));
+                    return ServerResponse.ok().build().then();
+                })
+                .webFilter(new WebFilterChainProxy(securityWebFilterChain))
+                .build();
+
+        filteredClient.get().uri("/api/v1/parties").exchange()
+                .expectStatus().isOk();
+
+        assertThat(tenant.get()).isNull();
+    }
+
+    @Test
     void doesNotPropagateActorHeaderWhenDisabled() {
         // No JWT decoding and no actor filter are installed in the disabled
         // configuration, so an Authorization header has no effect at all.

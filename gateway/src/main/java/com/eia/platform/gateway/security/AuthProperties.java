@@ -14,10 +14,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *                public health and directory endpoints
  * @param jwksUri JWK set used to verify JWT signatures
  * @param issuer required {@code iss} claim of accepted JWTs
+ * @param tenantClaim JWT claim that carries the tenant bound to every
+ *                    authenticated non-public exchange
  */
 @ConfigurationProperties(prefix = "eia.auth")
 public record AuthProperties(
         boolean enabled,
         @DefaultValue("http://localhost:9000/oauth2/jwks") String jwksUri,
-        @DefaultValue("http://localhost:9000") String issuer) {
+        @DefaultValue("http://localhost:9000") String issuer,
+        @DefaultValue("tenant_id") String tenantClaim) {
 }

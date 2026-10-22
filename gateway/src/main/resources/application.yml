@@ -7,10 +7,13 @@ eia:
     # /actuator/health and /api/v1/directory stay public and all other
     # exchanges require a valid bearer JWT. Authenticated /api/** exchanges
     # need SCOPE_eia.read for GET/HEAD/OPTIONS and SCOPE_eia.write for
-    # POST/PUT/PATCH/DELETE; the JWT subject is forwarded as X-EIA-Actor.
+    # POST/PUT/PATCH/DELETE; the request is bound to the JWT tenant claim
+    # (X-EIA-Tenant is injected or must match) and the JWT subject is
+    # forwarded as X-EIA-Actor.
     enabled: false
     jwks-uri: http://localhost:9000/oauth2/jwks
     issuer: http://localhost:9000
+    tenant-claim: tenant_id
 spring:
   application:
     name: eia-gateway

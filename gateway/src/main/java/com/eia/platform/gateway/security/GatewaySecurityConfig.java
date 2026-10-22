@@ -1,5 +1,6 @@
 package com.eia.platform.gateway.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -29,8 +30,10 @@ import reactor.core.publisher.Mono;
  * {@code eia.auth.issuer} and signed by a key from {@code eia.auth.jwks-uri}.
  * Once authenticated, API exchanges are authorized by HTTP method: safe
  * methods need {@code SCOPE_eia.read} and mutations need
- * {@code SCOPE_eia.write}. Authenticated JWT requests then get an
- * {@code X-EIA-Actor} header derived from the token subject.
+ * {@code SCOPE_eia.write}. Authenticated JWT requests are then bound to the
+ * token's tenant claim: a missing {@code X-EIA-Tenant} header is populated from
+ * the claim, a conflicting header is rejected with {@code 403}, and the token
+ * subject is forwarded as {@code X-EIA-Actor}.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
@@ -57,7 +60,9 @@ public class GatewaySecurityConfig {
     @ConditionalOnProperty(prefix = "eia.auth", name = "enabled", havingValue = "true")
     SecurityWebFilterChain enabledSecurityWebFilterChain(ServerHttpSecurity http,
             ReactiveJwtDecoder jwtDecoder,
-            Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthenticationConverter) {
+            Converter<Jwt, Mono<AbstractAuthenticationToken>> jwtAuthenticationConverter,
+            AuthProperties properties,
+            ObjectMapper objectMapper) {
         http.csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(PUBLIC_PATHS).permitAll()
@@ -74,6 +79,11 @@ public class GatewaySecurityConfig {
                         .jwt(jwt -> jwt
                                 .jwtDecoder(jwtDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                // Both filters run directly after authentication. Tenant
+                // binding is registered first so a mismatched request is
+                // rejected before any downstream identity header is derived.
+                .addFilterAfter(new TenantHeaderWebFilter(properties.tenantClaim(), objectMapper, PUBLIC_PATHS),
+                        SecurityWebFiltersOrder.AUTHENTICATION)
                 .addFilterAfter(new ActorHeaderWebFilter(), SecurityWebFiltersOrder.AUTHENTICATION);
         return http.build();
     }
