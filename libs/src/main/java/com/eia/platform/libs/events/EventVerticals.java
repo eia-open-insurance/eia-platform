@@ -18,7 +18,8 @@ public final class EventVerticals {
             "payment",
             "notifications",
             "cession",
-            "retrocession");
+            "retrocession",
+            "product");
 
     private EventVerticals() {
     }
