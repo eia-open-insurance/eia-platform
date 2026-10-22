@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PasswordGrantTokenEndpointTest {
 
     private static final String ISSUER = "http://localhost:9000";
+    private static final String TENANT_ID = "11111111-1111-7111-8111-111111111111";
     private static final String TOKEN_ENDPOINT = "/oauth2/token";
 
     @Autowired
@@ -72,6 +73,8 @@ class PasswordGrantTokenEndpointTest {
         assertThat(claims.get("exp").asLong()).isPositive();
         assertThat(claims.get("scope")).isNotNull();
         assertThat(scopes(claims)).containsExactlyInAnyOrder("profile", "eia.read", "eia.write");
+        assertThat(claims.get("tenant_id").asText()).isEqualTo(TENANT_ID);
+        assertThat(roles(claims)).containsExactly("CLAIMS_ADJUSTER");
     }
 
     @Test
@@ -111,6 +114,14 @@ class PasswordGrantTokenEndpointTest {
 
         assertThat(tokenResponse.get("scope").asText()).isEqualTo("eia.read");
         assertThat(scopes(accessTokenClaims(tokenResponse))).containsExactly("eia.read");
+    }
+
+    @Test
+    void issuesAuditorAccessTokenWithTenantAndAuditorRole() throws Exception {
+        JsonNode claims = accessTokenClaims(requestPasswordGrant("auditor", "password", "eia.read"));
+
+        assertThat(claims.get("tenant_id").asText()).isEqualTo(TENANT_ID);
+        assertThat(roles(claims)).containsExactly("AUDITOR");
     }
 
     @Test
@@ -191,5 +202,11 @@ class PasswordGrantTokenEndpointTest {
         List<String> scopes = new ArrayList<>();
         claims.get("scope").forEach(scope -> scopes.add(scope.asText()));
         return scopes;
+    }
+
+    private static List<String> roles(JsonNode claims) {
+        List<String> roles = new ArrayList<>();
+        claims.get("roles").forEach(role -> roles.add(role.asText()));
+        return roles;
     }
 }

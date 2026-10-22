@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RefreshTokenGrantTokenEndpointTest {
 
     private static final String TOKEN_ENDPOINT = "/oauth2/token";
+    private static final String TENANT_ID = "11111111-1111-7111-8111-111111111111";
 
     @Autowired
     private MockMvc mockMvc;
@@ -65,6 +66,25 @@ class RefreshTokenGrantTokenEndpointTest {
 
         assertThat(refreshed.get("scope").asText()).isEqualTo("eia.read");
         assertThat(scopes(accessTokenClaims(refreshed))).containsExactly("eia.read");
+    }
+
+    @Test
+    void refreshedAccessTokenStillCarriesTenantAndRoleClaims() throws Exception {
+        JsonNode initial = passwordToken("eia.read eia.write");
+        String refreshToken = initial.get("refresh_token").asText();
+
+        JsonNode refreshed = refreshToken(refreshToken, null);
+
+        JsonNode claims = accessTokenClaims(refreshed);
+        assertThat(claims.get("tenant_id").asText()).isEqualTo(TENANT_ID);
+        assertThat(roles(claims)).containsExactly("CLAIMS_ADJUSTER");
+    }
+
+    @Test
+    void issuesOpaqueRefreshTokenWithoutJwtClaims() throws Exception {
+        JsonNode initial = passwordToken("eia.read");
+
+        assertThat(initial.get("refresh_token").asText().split("\\.")).hasSize(1);
     }
 
     @Test
@@ -128,5 +148,11 @@ class RefreshTokenGrantTokenEndpointTest {
         List<String> scopes = new ArrayList<>();
         claims.get("scope").forEach(scope -> scopes.add(scope.asText()));
         return scopes;
+    }
+
+    private static List<String> roles(JsonNode claims) {
+        List<String> roles = new ArrayList<>();
+        claims.get("roles").forEach(role -> roles.add(role.asText()));
+        return roles;
     }
 }

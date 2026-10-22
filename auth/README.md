@@ -20,6 +20,7 @@ The authorization server is self-contained for local development:
 | Setting | Value |
 | --- | --- |
 | Issuer | `http://localhost:9000` (override with `eia.auth.issuer` or `EIA_AUTH_ISSUER`) |
+| Tenant | `11111111-1111-7111-8111-111111111111` (override with `eia.auth.tenant-id` or `EIA_AUTH_TENANT_ID`) |
 | Token endpoint | `POST http://localhost:9000/oauth2/token` |
 | JWKS | `GET http://localhost:9000/oauth2/jwks` |
 | Client | `eia-shell` / `shell-secret` (`client_secret_basic`) |
@@ -39,6 +40,18 @@ and `eia.write` scopes. A password grant may request any subset of those scopes
 and the token response `scope` reflects the granted scopes. The `auditor` demo
 user is read-only: it can request `openid`, `profile`, and `eia.read`, but
 requesting `eia.write` is rejected with `invalid_scope`.
+
+JWT access tokens carry the tenant and the resource owner's platform roles:
+
+| Claim | Value |
+| --- | --- |
+| `tenant_id` | Configured `eia.auth.tenant-id` (default `11111111-1111-7111-8111-111111111111`) |
+| `roles` | Principal authorities without the Spring `ROLE_` prefix, for example `CLAIMS_ADJUSTER` or `AUDITOR` |
+
+Refresh tokens are opaque and carry no claims. Exchanging one issues a fresh
+access token from the stored authorization principal, so the refreshed access
+token still contains `tenant_id` and `roles`; it does not add claims to the
+refresh token itself.
 
 The `eia-shell` client also supports `authorization_code` and `refresh_token`
 with redirect URI `http://localhost:3000/callback`. Exchange the refresh token

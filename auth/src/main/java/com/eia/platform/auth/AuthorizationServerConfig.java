@@ -27,9 +27,11 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.token.DelegatingOAuth2TokenGenerator;
+import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.JwtGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2AccessTokenGenerator;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2RefreshTokenGenerator;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenGenerator;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
@@ -48,6 +50,8 @@ import java.util.UUID;
  */
 @Configuration(proxyBeanMethods = false)
 public class AuthorizationServerConfig {
+
+    private static final String DEFAULT_TENANT_ID = "11111111-1111-7111-8111-111111111111";
 
     @Bean
     @Order(1)
@@ -153,10 +157,29 @@ public class AuthorizationServerConfig {
         return new NimbusJwtEncoder(jwkSource);
     }
 
+    /**
+     * Adds the tenant and role claims to JWT access tokens. The default keeps
+     * the local demo tenant working when no property is supplied.
+     */
     @Bean
-    OAuth2TokenGenerator<?> tokenGenerator(JwtEncoder jwtEncoder) {
+    OAuth2TokenCustomizer<JwtEncodingContext> jwtTokenCustomizer(
+            @Value("${eia.auth.tenant-id:" + DEFAULT_TENANT_ID + "}") String tenantId) {
+        return new TenantRoleTokenCustomizer(tenantId);
+    }
+
+    /**
+     * The application declares its own token generator (the password grant
+     * needs it directly), which bypasses the authorization server's
+     * auto-configured generator; attach the customizer explicitly.
+     */
+    @Bean
+    OAuth2TokenGenerator<?> tokenGenerator(
+            JwtEncoder jwtEncoder,
+            OAuth2TokenCustomizer<JwtEncodingContext> jwtTokenCustomizer) {
+        JwtGenerator jwtGenerator = new JwtGenerator(jwtEncoder);
+        jwtGenerator.setJwtCustomizer(jwtTokenCustomizer);
         return new DelegatingOAuth2TokenGenerator(
-                new JwtGenerator(jwtEncoder),
+                jwtGenerator,
                 new OAuth2AccessTokenGenerator(),
                 new OAuth2RefreshTokenGenerator());
     }
