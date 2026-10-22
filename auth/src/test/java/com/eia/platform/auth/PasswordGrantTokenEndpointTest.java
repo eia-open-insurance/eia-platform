@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -25,8 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Exercises the local password grant through the real token endpoint, including
- * client authentication with HTTP Basic, JWT access token claims, and JWKS
- * publication.
+ * client authentication with HTTP Basic, scope handling, JWT access token
+ * claims, and JWKS publication.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -70,9 +71,61 @@ class PasswordGrantTokenEndpointTest {
         assertThat(claims.get("sub").asText()).isEqualTo("adjuster");
         assertThat(claims.get("exp").asLong()).isPositive();
         assertThat(claims.get("scope")).isNotNull();
-        List<String> scopes = new ArrayList<>();
-        claims.get("scope").forEach(scope -> scopes.add(scope.asText()));
-        assertThat(scopes).containsExactlyInAnyOrder("openid", "profile", "eia.read");
+        assertThat(scopes(claims)).containsExactlyInAnyOrder("openid", "profile", "eia.read");
+    }
+
+    @Test
+    void grantsReadAndWriteScopesWhenBothRequested() throws Exception {
+        JsonNode tokenResponse = requestPasswordGrant("adjuster", "password", "eia.read eia.write");
+
+        assertThat(tokenResponse.get("scope").asText())
+                .contains("eia.read")
+                .contains("eia.write");
+        assertThat(scopes(accessTokenClaims(tokenResponse)))
+                .containsExactlyInAnyOrder("eia.read", "eia.write");
+    }
+
+    @Test
+    void grantsReadScopeWhenOnlyReadRequested() throws Exception {
+        JsonNode tokenResponse = requestPasswordGrant("adjuster", "password", "eia.read");
+
+        assertThat(tokenResponse.get("scope").asText()).isEqualTo("eia.read");
+        assertThat(scopes(accessTokenClaims(tokenResponse))).containsExactly("eia.read");
+    }
+
+    @Test
+    void defaultsAuditorToReadOnlyScopes() throws Exception {
+        JsonNode tokenResponse = requestPasswordGrant("auditor", "password", null);
+
+        assertThat(tokenResponse.get("scope").asText())
+                .contains("openid")
+                .contains("profile")
+                .contains("eia.read")
+                .doesNotContain("eia.write");
+        assertThat(scopes(accessTokenClaims(tokenResponse)))
+                .containsExactlyInAnyOrder("openid", "profile", "eia.read");
+    }
+
+    @Test
+    void allowsAuditorToRequestReadScope() throws Exception {
+        JsonNode tokenResponse = requestPasswordGrant("auditor", "password", "eia.read");
+
+        assertThat(tokenResponse.get("scope").asText()).isEqualTo("eia.read");
+        assertThat(scopes(accessTokenClaims(tokenResponse))).containsExactly("eia.read");
+    }
+
+    @Test
+    void rejectsAuditorWriteScope() throws Exception {
+        mockMvc.perform(post(TOKEN_ENDPOINT)
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "password")
+                        .param("username", "auditor")
+                        .param("password", "password")
+                        .param("scope", "eia.read eia.write")
+                        .with(httpBasic("eia-shell", "shell-secret")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_scope"))
+                .andExpect(jsonPath("$.access_token").doesNotExist());
     }
 
     @Test
@@ -89,11 +142,55 @@ class PasswordGrantTokenEndpointTest {
     }
 
     @Test
+    void rejectsUnregisteredScope() throws Exception {
+        mockMvc.perform(post(TOKEN_ENDPOINT)
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "password")
+                        .param("username", "adjuster")
+                        .param("password", "password")
+                        .param("scope", "eia.read eia.admin")
+                        .with(httpBasic("eia-shell", "shell-secret")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_scope"));
+    }
+
+    @Test
     void publishesSigningKeysForJwtValidation() throws Exception {
         mockMvc.perform(get("/oauth2/jwks"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys[0].kty").value("RSA"))
                 .andExpect(jsonPath("$.keys[0].kid").isString())
                 .andExpect(jsonPath("$.keys[0].n").isString());
+    }
+
+    private JsonNode requestPasswordGrant(String username, String password, String scope) throws Exception {
+        MockHttpServletRequestBuilder request = post(TOKEN_ENDPOINT)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("grant_type", "password")
+                .param("username", username)
+                .param("password", password)
+                .with(httpBasic("eia-shell", "shell-secret"));
+        if (scope != null) {
+            request.param("scope", scope);
+        }
+        MvcResult result = mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.access_token").isString())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode accessTokenClaims(JsonNode tokenResponse) throws Exception {
+        String accessToken = tokenResponse.get("access_token").asText();
+        String[] parts = accessToken.split("\\.");
+        assertThat(parts).hasSize(3);
+        return objectMapper.readTree(Base64.getUrlDecoder().decode(parts[1]));
+    }
+
+    private static List<String> scopes(JsonNode claims) {
+        List<String> scopes = new ArrayList<>();
+        claims.get("scope").forEach(scope -> scopes.add(scope.asText()));
+        return scopes;
     }
 }

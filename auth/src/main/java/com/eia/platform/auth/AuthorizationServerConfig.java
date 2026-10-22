@@ -41,9 +41,10 @@ import java.util.UUID;
  * Local OIDC/OAuth2 authorization server.
  *
  * <p>The server is intentionally self-contained for local development: the
- * {@code adjuster}/{@code password} user and the {@code eia-shell} client are
- * declared in memory, while JWT access tokens are signed with a generated RSA
- * key exposed through {@code /oauth2/jwks}.
+ * {@code adjuster}/{@code password} and {@code auditor}/{@code password} users
+ * and the {@code eia-shell} client are declared in memory, while JWT access
+ * tokens are signed with a generated RSA key exposed through
+ * {@code /oauth2/jwks}.
  */
 @Configuration(proxyBeanMethods = false)
 public class AuthorizationServerConfig {
@@ -87,10 +88,17 @@ public class AuthorizationServerConfig {
 
     @Bean
     UserDetailsService userDetailsService() {
-        return new InMemoryUserDetailsManager(User.withUsername("adjuster")
-                .password("{noop}password")
-                .roles("CLAIMS_ADJUSTER")
-                .build());
+        return new InMemoryUserDetailsManager(
+                User.withUsername("adjuster")
+                        .password("{noop}password")
+                        .roles("CLAIMS_ADJUSTER")
+                        .build(),
+                // Read-only demo identity: the password grant provider only
+                // allows it to request non-write scopes.
+                User.withUsername("auditor")
+                        .password("{noop}password")
+                        .roles("AUDITOR")
+                        .build());
     }
 
     @Bean
@@ -124,6 +132,7 @@ public class AuthorizationServerConfig {
                 .scope("openid")
                 .scope("profile")
                 .scope("eia.read")
+                .scope("eia.write")
                 .build();
         return new InMemoryRegisteredClientRepository(client);
     }

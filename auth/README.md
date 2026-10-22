@@ -24,17 +24,34 @@ The authorization server is self-contained for local development:
 | JWKS | `GET http://localhost:9000/oauth2/jwks` |
 | Client | `eia-shell` / `shell-secret` (`client_secret_basic`) |
 | User | `adjuster` / `password` (role `CLAIMS_ADJUSTER`) |
+| User | `auditor` / `password` (read-only role `AUDITOR`) |
 
 Request a token with the resource owner password grant:
 
 ```bash
 curl -s -u eia-shell:shell-secret \
-  -d 'grant_type=password&username=adjuster&password=password&scope=openid profile eia.read' \
+  -d 'grant_type=password&username=adjuster&password=password&scope=openid profile eia.read eia.write' \
   http://localhost:9000/oauth2/token
 ```
 
+The `eia-shell` client is registered for the `openid`, `profile`, `eia.read`,
+and `eia.write` scopes. A password grant may request any subset of those scopes
+and the token response `scope` reflects the granted scopes. The `auditor` demo
+user is read-only: it can request `openid`, `profile`, and `eia.read`, but
+requesting `eia.write` is rejected with `invalid_scope`.
+
 The `eia-shell` client also supports `authorization_code` and `refresh_token`
-with redirect URI `http://localhost:3000/callback`.
+with redirect URI `http://localhost:3000/callback`. Exchange the refresh token
+returned above to obtain a new access token:
+
+```bash
+curl -s -u eia-shell:shell-secret \
+  -d 'grant_type=refresh_token&refresh_token=<refresh-token>' \
+  http://localhost:9000/oauth2/token
+```
+
+A refresh without a `scope` keeps the scopes originally granted; a refresh may
+also request a narrower subset of them.
 
 Run the service with `./gradlew :auth:bootRun` and the tests with
 `./gradlew :auth:test`.

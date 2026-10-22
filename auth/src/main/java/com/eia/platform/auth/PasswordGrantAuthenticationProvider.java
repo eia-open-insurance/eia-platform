@@ -44,6 +44,8 @@ import java.util.Set;
 public final class PasswordGrantAuthenticationProvider implements AuthenticationProvider {
 
     private static final String ERROR_URI = "https://datatracker.ietf.org/doc/html/rfc6749#section-5.2";
+    private static final String WRITE_SCOPE = "eia.write";
+    private static final String AUDITOR_ROLE = "ROLE_AUDITOR";
 
     private final OAuth2AuthorizationService authorizationService;
     private final OAuth2TokenGenerator<? extends OAuth2Token> tokenGenerator;
@@ -75,7 +77,8 @@ public final class PasswordGrantAuthenticationProvider implements Authentication
         }
 
         Authentication resourceOwner = authenticateResourceOwner(passwordAuthentication);
-        Set<String> authorizedScopes = resolveAuthorizedScopes(passwordAuthentication, registeredClient);
+        Set<String> authorizedScopes =
+                resolveAuthorizedScopes(passwordAuthentication, registeredClient, resourceOwner);
 
         DefaultOAuth2TokenContext.Builder tokenContextBuilder = DefaultOAuth2TokenContext.builder()
                 .registeredClient(registeredClient)
@@ -155,13 +158,21 @@ public final class PasswordGrantAuthenticationProvider implements Authentication
     }
 
     private static Set<String> resolveAuthorizedScopes(
-            PasswordGrantAuthenticationToken passwordAuthentication, RegisteredClient registeredClient) {
+            PasswordGrantAuthenticationToken passwordAuthentication,
+            RegisteredClient registeredClient,
+            Authentication resourceOwner) {
+        // Local demo rule: an AUDITOR is read-only, so a write scope is neither
+        // granted by default nor accepted when explicitly requested.
+        Set<String> allowedScopes = new LinkedHashSet<>(registeredClient.getScopes());
+        if (isReadOnly(resourceOwner)) {
+            allowedScopes.remove(WRITE_SCOPE);
+        }
         Set<String> requestedScopes = passwordAuthentication.getScopes();
         if (requestedScopes == null || requestedScopes.isEmpty()) {
-            return new LinkedHashSet<>(registeredClient.getScopes());
+            return allowedScopes;
         }
         for (String requestedScope : requestedScopes) {
-            if (!registeredClient.getScopes().contains(requestedScope)) {
+            if (!allowedScopes.contains(requestedScope)) {
                 throw new OAuth2AuthenticationException(new OAuth2Error(
                         OAuth2ErrorCodes.INVALID_SCOPE,
                         "Invalid scope: " + requestedScope,
@@ -169,6 +180,11 @@ public final class PasswordGrantAuthenticationProvider implements Authentication
             }
         }
         return new LinkedHashSet<>(requestedScopes);
+    }
+
+    private static boolean isReadOnly(Authentication resourceOwner) {
+        return resourceOwner.getAuthorities().stream()
+                .anyMatch(authority -> AUDITOR_ROLE.equals(authority.getAuthority()));
     }
 
     private static OAuth2ClientAuthenticationToken getAuthenticatedClientElseThrowInvalidClient(
