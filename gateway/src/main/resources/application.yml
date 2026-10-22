@@ -39,6 +39,9 @@ spring:
         - id: policy-programs
           uri: http://localhost:8084
           predicates: [Path=/api/v1/programs/**]
+        - id: policy-products
+          uri: http://localhost:8084
+          predicates: [Path=/api/v1/products/**]
         - id: policy-legal-entities
           uri: http://localhost:8084
           predicates: [Path=/api/v1/legal-entities/**]
