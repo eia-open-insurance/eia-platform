@@ -48,14 +48,14 @@ class PasswordGrantTokenEndpointTest {
                         .param("grant_type", "password")
                         .param("username", "adjuster")
                         .param("password", "password")
-                        .param("scope", "openid profile eia.read")
+                        .param("scope", "profile eia.read eia.write")
                         .with(httpBasic("eia-shell", "shell-secret")))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.token_type").value("Bearer"))
                 .andExpect(jsonPath("$.access_token").isString())
                 .andExpect(jsonPath("$.refresh_token").isString())
-                .andExpect(jsonPath("$.scope", containsString("openid")))
+                .andExpect(jsonPath("$.scope", containsString("eia.write")))
                 .andExpect(jsonPath("$.scope", containsString("profile")))
                 .andExpect(jsonPath("$.scope", containsString("eia.read")))
                 .andReturn();
@@ -71,7 +71,7 @@ class PasswordGrantTokenEndpointTest {
         assertThat(claims.get("sub").asText()).isEqualTo("adjuster");
         assertThat(claims.get("exp").asLong()).isPositive();
         assertThat(claims.get("scope")).isNotNull();
-        assertThat(scopes(claims)).containsExactlyInAnyOrder("openid", "profile", "eia.read");
+        assertThat(scopes(claims)).containsExactlyInAnyOrder("profile", "eia.read", "eia.write");
     }
 
     @Test
@@ -98,12 +98,11 @@ class PasswordGrantTokenEndpointTest {
         JsonNode tokenResponse = requestPasswordGrant("auditor", "password", null);
 
         assertThat(tokenResponse.get("scope").asText())
-                .contains("openid")
                 .contains("profile")
                 .contains("eia.read")
                 .doesNotContain("eia.write");
         assertThat(scopes(accessTokenClaims(tokenResponse)))
-                .containsExactlyInAnyOrder("openid", "profile", "eia.read");
+                .containsExactlyInAnyOrder("profile", "eia.read");
     }
 
     @Test

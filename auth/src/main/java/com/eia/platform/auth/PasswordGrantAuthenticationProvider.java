@@ -108,11 +108,10 @@ public final class PasswordGrantAuthenticationProvider implements Authentication
                 .authorizationGrantType(PasswordGrantAuthenticationToken.PASSWORD)
                 .authorizedScopes(authorizedScopes)
                 .attribute(Principal.class.getName(), resourceOwner);
+        authorizationBuilder.accessToken(accessToken);
         if (generatedAccessToken instanceof ClaimAccessor claimAccessor) {
             authorizationBuilder.token(accessToken, metadata -> metadata.put(
                     OAuth2Authorization.Token.CLAIMS_METADATA_NAME, claimAccessor.getClaims()));
-        } else {
-            authorizationBuilder.accessToken(accessToken);
         }
 
         OAuth2RefreshToken refreshToken = null;
@@ -164,6 +163,9 @@ public final class PasswordGrantAuthenticationProvider implements Authentication
         // Local demo rule: an AUDITOR is read-only, so a write scope is neither
         // granted by default nor accepted when explicitly requested.
         Set<String> allowedScopes = new LinkedHashSet<>(registeredClient.getScopes());
+        // A password grant has no authorization code, so an ID token cannot be
+        // generated on refresh; keep openid out of the local password-grant flow.
+        allowedScopes.remove("openid");
         if (isReadOnly(resourceOwner)) {
             allowedScopes.remove(WRITE_SCOPE);
         }
